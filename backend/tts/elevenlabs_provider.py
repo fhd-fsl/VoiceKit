@@ -99,7 +99,7 @@ class ElevenLabsTTS:
                 },
                 "xi_api_key": self._api_key,
                 "generation_config": {
-                    "chunk_length_schedule": [120, 160, 250, 290],
+                    "chunk_length_schedule": [50],
                 },
             }
         )
@@ -150,18 +150,9 @@ class ElevenLabsTTS:
         receiver_task = asyncio.create_task(self._receive_audio(ws, audio_queue))
 
         try:
-            text_buffer = ""
             async for token in text_stream:
-                text_buffer += token
-
-                # Send when we hit sentence-ending punctuation
-                if token and token[-1] in _SENTENCE_ENDERS:
-                    await self._send_chunk(ws, text_buffer)
-                    text_buffer = ""
-
-            # Send any remaining buffered text
-            if text_buffer.strip():
-                await self._send_chunk(ws, text_buffer)
+                if token:
+                    await self._send_chunk(ws, token)
 
             # Signal end of text input
             await ws.send(json.dumps({"text": ""}))

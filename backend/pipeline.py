@@ -250,6 +250,7 @@ class VoicePipeline:
 
         # Retrieve RAG context
         rag_results = await self._rag.retrieve(user_text)
+        
         if rag_results:
             logger.info("RAG: Retrieved %d relevant chunks", len(rag_results))
             for i, chunk in enumerate(rag_results):
@@ -260,33 +261,21 @@ class VoicePipeline:
 
         full_response = ""
 
-        start_time = time.time()
-
         try:
             # Create an async generator that captures the full response
             async def llm_token_stream() -> AsyncIterator[str]:
                 nonlocal full_response
-                first_token = True
                 async for token in self._llm.generate(
                     self._messages, 
                     context,
                     tools=TOOLS_SCHEMA,
                     tool_functions=TOOL_FUNCTIONS
                 ):
-                    if first_token:
-                        llm_latency = time.time() - start_time
-                        logger.info("Latency [LLM TTFT]: %.3f seconds", llm_latency)
-                        first_token = False
                     full_response += token
                     yield token
 
             # Pipe LLM tokens through TTS and into the playback queue
-            first_chunk = True
             async for audio_chunk in self._tts.synthesize(llm_token_stream()):
-                if first_chunk:
-                    latency = time.time() - start_time
-                    logger.info("Latency [Total TTFA]: %.3f seconds", latency)
-                    first_chunk = False
                 await self._tts_audio_queue.put(audio_chunk)
 
             # Signal end of this utterance's audio

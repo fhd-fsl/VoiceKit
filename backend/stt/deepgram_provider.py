@@ -79,7 +79,11 @@ class DeepgramSTT:
     async def send_audio(self, audio: bytes) -> None:
         """Send raw mu-law audio bytes to Deepgram."""
         if self._connection and self._connected:
-            await self._connection.send(audio)
+            try:
+                await self._connection.send(audio)
+            except Exception as e:
+                logger.debug("Failed to send audio to Deepgram: %s", e)
+                self._connected = False
 
     async def transcripts(self) -> AsyncIterator[Transcript]:
         """Yield Transcript objects as they arrive from Deepgram."""
@@ -141,7 +145,10 @@ class DeepgramSTT:
 
     async def _on_error(self, _self, error, **kwargs) -> None:
         """Handle Deepgram errors."""
-        logger.error("Deepgram error: %s", error)
+        logger.error("Deepgram error encountered: %s", error)
+        if self._loop:
+            # We don't necessarily kill the connection, but we log prominently
+            pass
 
     async def _on_close(self, _self, close, **kwargs) -> None:
         """Handle Deepgram connection close."""

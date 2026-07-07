@@ -19,10 +19,11 @@ from backend.telephony.base import TelephonyProvider
 from backend.stt.base import STTProvider, Transcript
 from backend.llm.base import LLMProvider, PipelineContext
 from backend.tts.base import TTSProvider
+from backend.rag.engine import RAGEngine
 from backend.utils.audio import chunk_audio
+from backend.tools.registry import TOOLS_SCHEMA, TOOL_FUNCTIONS
 
 logger = logging.getLogger(__name__)
-
 
 class VoicePipeline:
     """Coordinates a single voice call session through the full pipeline.
@@ -44,11 +45,13 @@ class VoicePipeline:
         stt: STTProvider,
         llm: LLMProvider,
         tts: TTSProvider,
+        rag: RAGEngine,
     ) -> None:
         self._telephony = telephony
         self._stt = stt
         self._llm = llm
         self._tts = tts
+        self._rag = rag
 
         # Conversation state
         self._messages: list[dict[str, str]] = []
@@ -136,7 +139,10 @@ class VoicePipeline:
         """
         try:
             async for transcript in self._stt.transcripts():
-                await self._handle_transcript(transcript)
+                try:
+                    await self._handle_transcript(transcript)
+                except Exception as e:
+                    logger.exception("Error handling transcript: %s", e)
 
         except asyncio.CancelledError:
             pass
@@ -171,9 +177,12 @@ class VoicePipeline:
                     self._play_until += audio_duration
 
                 # Chunk the audio into 20ms segments for smooth playback
-                chunks = chunk_audio(audio, chunk_ms=20)
-                for chunk in chunks:
-                    await self._telephony.send_audio(chunk)
+                try:
+                    chunks = chunk_audio(audio, chunk_ms=20)
+                    for chunk in chunks:
+                        await self._telephony.send_audio(chunk)
+                except Exception as e:
+                    logger.exception("Error sending audio chunk to telephony: %s", e)
 
         except asyncio.CancelledError:
             pass
@@ -239,8 +248,15 @@ class VoicePipeline:
         # Add user message to conversation history
         self._messages.append({"role": "user", "content": user_text})
 
-        # Build pipeline context (future: populate with RAG/tool results)
-        context = PipelineContext()
+        # Retrieve RAG context
+        rag_results = await self._rag.retrieve(user_text)
+        if rag_results:
+            logger.info("RAG: Retrieved %d relevant chunks", len(rag_results))
+            for i, chunk in enumerate(rag_results):
+                logger.debug("RAG Chunk %d: %s", i + 1, chunk)
+
+        # Build pipeline context
+        context = PipelineContext(rag_results=rag_results if rag_results else None)
 
         full_response = ""
 
@@ -251,7 +267,12 @@ class VoicePipeline:
             async def llm_token_stream() -> AsyncIterator[str]:
                 nonlocal full_response
                 first_token = True
-                async for token in self._llm.generate(self._messages, context):
+                async for token in self._llm.generate(
+                    self._messages, 
+                    context,
+                    tools=TOOLS_SCHEMA,
+                    tool_functions=TOOL_FUNCTIONS
+                ):
                     if first_token:
                         llm_latency = time.time() - start_time
                         logger.info("Latency [LLM TTFT]: %.3f seconds", llm_latency)

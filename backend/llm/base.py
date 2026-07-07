@@ -37,16 +37,18 @@ class LLMProvider(Protocol):
 
     async def generate(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         context: PipelineContext | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_functions: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Stream text tokens for the given conversation.
 
         Args:
-            messages: Conversation history as a list of role/content dicts.
-                      Example: [{"role": "user", "content": "Hello"}]
-            context: Optional pipeline context carrying RAG results,
-                     tool call results, or other metadata.
+            messages: Conversation history.
+            context: Optional pipeline context carrying RAG results.
+            tools: Optional list of OpenAI-format tool schemas.
+            tool_functions: Optional mapping of tool names to Python callables.
 
         Yields:
             Text tokens (partial words, words, or phrases) as they
@@ -86,7 +88,7 @@ class LLMProvider(Protocol):
         cls,
         *,
         api_key: str,
-        model: str = "llama-3.1-8b-instant",
+        model: str = "llama-3.3-70b-versatile",
         system_prompt: str | None = None,
         **kwargs,
     ) -> LLMProvider:
@@ -94,7 +96,7 @@ class LLMProvider(Protocol):
 
         Args:
             api_key: Groq API key.
-            model: Model name (default: llama-3.1-8b-instant).
+            model: Model name (default: llama-3.3-70b-versatile).
             system_prompt: Optional system prompt prepended to messages.
             **kwargs: Additional options passed to the client.
         """

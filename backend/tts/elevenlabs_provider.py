@@ -80,8 +80,12 @@ class ElevenLabsTTS:
 
         try:
             ws = await websockets.connect(url)
-        except Exception:
-            logger.exception("Failed to connect to ElevenLabs TTS")
+        except websockets.exceptions.InvalidStatusCode as e:
+            logger.error("ElevenLabs TTS rejected connection (HTTP %s). Check API key and credits.", e.status_code)
+            fetch_task.cancel()
+            return
+        except Exception as e:
+            logger.exception("Failed to connect to ElevenLabs TTS: %s", e)
             fetch_task.cancel()
             return
 
@@ -188,6 +192,10 @@ class ElevenLabsTTS:
         try:
             async for msg in ws:
                 data = json.loads(msg)
+
+                if "error" in data:
+                    logger.error("ElevenLabs TTS Error: %s", data["error"])
+                    break
 
                 if audio_b64 := data.get("audio"):
                     audio_bytes = base64.b64decode(audio_b64)

@@ -84,23 +84,27 @@ class TwilioTelephony:
         logger.info("Waiting for Twilio media stream events")
         try:
             while self._running:
-                raw = await self._ws.receive_text()
-                msg = json.loads(raw)
-                event = msg.get("event")
+                try:
+                    raw = await self._ws.receive_text()
+                    msg = json.loads(raw)
+                    event = msg.get("event")
 
-                if event == "connected":
-                    self._handle_connected(msg)
-                elif event == "start":
-                    self._handle_start(msg)
-                elif event == "media":
-                    self._handle_media(msg)
-                elif event == "mark":
-                    self._handle_mark(msg)
-                elif event == "stop":
-                    self._handle_stop(msg)
-                    break
-                else:
-                    logger.debug("Unknown Twilio event: %s", event)
+                    if event == "connected":
+                        self._handle_connected(msg)
+                    elif event == "start":
+                        self._handle_start(msg)
+                    elif event == "media":
+                        self._handle_media(msg)
+                    elif event == "mark":
+                        self._handle_mark(msg)
+                    elif event == "stop":
+                        self._handle_stop(msg)
+                        break
+                    else:
+                        logger.debug("Unknown Twilio event: %s", event)
+                except json.JSONDecodeError:
+                    logger.warning("Received malformed JSON from Twilio: %s", raw)
+                    continue
 
         except WebSocketDisconnect:
             logger.info(
@@ -127,15 +131,18 @@ class TwilioTelephony:
             logger.warning("Cannot send audio -- stream not ready")
             return
 
-        payload = base64.b64encode(mulaw_bytes).decode("ascii")
-        message = json.dumps(
-            {
-                "event": "media",
-                "streamSid": self._meta.stream_sid,
-                "media": {"payload": payload},
-            }
-        )
-        await self._ws.send_text(message)
+        try:
+            payload = base64.b64encode(mulaw_bytes).decode("ascii")
+            message = json.dumps(
+                {
+                    "event": "media",
+                    "streamSid": self._meta.stream_sid,
+                    "media": {"payload": payload},
+                }
+            )
+            await self._ws.send_text(message)
+        except Exception as e:
+            logger.debug("Failed to send audio to Twilio: %s", e)
 
     async def send_mark(self, label: str | None = None) -> str:
         """Send a playback position mark to Twilio."""

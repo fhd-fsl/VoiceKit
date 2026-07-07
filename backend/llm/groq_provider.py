@@ -5,13 +5,14 @@ Uses Groq's OpenAI-compatible API to stream Llama-3 completions
 at extremely low latency.
 """
 
+import json
 import logging
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from openai import AsyncOpenAI
 
 from backend.llm.base import PipelineContext
-from backend.llm.openai_provider import DEFAULT_SYSTEM_PROMPT
+from backend.prompts import DEFAULT_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,10 @@ class GroqLLM:
 
     async def generate(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         context: PipelineContext | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        tool_functions: dict[str, Any] | None = None,
     ) -> AsyncIterator[str]:
         """Stream text tokens for the given conversation."""
         full_messages = self._build_messages(messages, context)
@@ -54,30 +57,104 @@ class GroqLLM:
         )
 
         try:
+            kwargs = {}
+            if tools:
+                kwargs["tools"] = tools
+
             stream = await self._client.chat.completions.create(
                 model=self._model,
                 messages=full_messages,
                 stream=True,
                 temperature=self._kwargs.get("temperature", 0.7),
                 max_tokens=self._kwargs.get("max_tokens", 300),
+                **kwargs
             )
 
+            # Accumulate tool calls across chunks
+            tool_call_accumulators = {}
+
             async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    token = chunk.choices[0].delta.content
+                delta = chunk.choices[0].delta
+                
+                # Check for tool calls
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        if tc.index not in tool_call_accumulators:
+                            tool_call_accumulators[tc.index] = {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name or "",
+                                    "arguments": tc.function.arguments or ""
+                                }
+                            }
+                        else:
+                            if tc.function.name:
+                                tool_call_accumulators[tc.index]["function"]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_call_accumulators[tc.index]["function"]["arguments"] += tc.function.arguments
+                    continue
+                
+                # Otherwise, yield text token
+                if delta.content:
+                    yield delta.content
+                    
+            # If tool calls were accumulated, execute them
+            if tool_call_accumulators and tool_functions:
+                logger.info("Groq triggered %d tool call(s)", len(tool_call_accumulators))
+                
+                # Reconstruct the tool call message
+                tool_calls = []
+                for tc_idx, tc_data in sorted(tool_call_accumulators.items()):
+                    tool_calls.append(tc_data)
+                
+                # Append assistant's tool call request to messages
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": tool_calls
+                })
+                
+                # Execute tools and append results
+                for tc in tool_calls:
+                    fn_name = tc["function"]["name"]
+                    fn_args = tc["function"]["arguments"]
+                    
+                    try:
+                        args_dict = json.loads(fn_args) if fn_args else {}
+                        if fn_name in tool_functions:
+                            logger.info("Executing tool: %s(%s)", fn_name, fn_args)
+                            result = await tool_functions[fn_name](**args_dict)
+                        else:
+                            logger.warning("Tool not found: %s", fn_name)
+                            result = f"Error: Tool {fn_name} not found"
+                    except Exception as e:
+                        logger.exception("Error executing tool %s", fn_name)
+                        result = f"Error executing tool: {e}"
+                        
+                    # Append tool result
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "name": fn_name,
+                        "content": str(result)
+                    })
+                    
+                # Recurse to get the final response!
+                async for token in self.generate(messages, context, tools, tool_functions):
                     yield token
 
-        except Exception:
-            logger.exception("Error during Groq streaming")
-            raise
+        except Exception as e:
+            logger.exception("Error during Groq streaming: %s", e)
+            yield "I'm sorry, I'm having trouble connecting to my brain right now."
 
     def _build_messages(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         context: PipelineContext | None,
-    ) -> list[dict[str, str]]:
+    ) -> list[dict[str, Any]]:
         """Build the full message list with system prompt and context."""
-        full_messages: list[dict[str, str]] = [
+        full_messages: list[dict[str, Any]] = [
             {"role": "system", "content": self._system_prompt}
         ]
 

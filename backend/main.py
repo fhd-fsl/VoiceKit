@@ -13,6 +13,8 @@ Run with:
 import logging
 import os
 
+from contextlib import asynccontextmanager
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import PlainTextResponse
@@ -22,6 +24,7 @@ from backend.stt.base import STTProvider
 from backend.llm.base import LLMProvider
 from backend.tts.base import TTSProvider
 from backend.pipeline import VoicePipeline
+from backend.rag.engine import RAGEngine
 
 # ── Configuration ────────────────────────────────────────────────────
 load_dotenv()
@@ -43,8 +46,18 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 
+# ── Global RAG Engine ────────────────────────────────────────────────
+rag_engine = RAGEngine(api_key=OPENAI_API_KEY)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialize RAG on startup
+    faq_path = os.path.join(os.path.dirname(__file__), "rag", "faq.txt")
+    await rag_engine.initialize(faq_path)
+    yield
+
 # ── FastAPI application ──────────────────────────────────────────────
-app = FastAPI(title="VoiceKit", version="0.2.0")
+app = FastAPI(title="VoiceKit", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -108,6 +121,7 @@ async def media_stream(websocket: WebSocket):
         stt=stt,
         llm=llm,
         tts=tts,
+        rag=rag_engine,
     )
 
     try:

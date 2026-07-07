@@ -1,0 +1,8 @@
+fastapi==0.129.0
+uvicorn==0.41.0
+twilio==9.10.1
+python-dotenv==1.2.1
+pyngrok==8.1.2
+websockets==16.0
+deepgram-sdk>=3.0.0
+openai>=1.0.0

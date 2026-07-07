@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoiceKit Softphone</title>
+    <script src="https://unpkg.com/@twilio/voice-sdk@2.18.3/dist/twilio.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .phone-card {
+            background-color: #1e293b;
+            border-radius: 1rem;
+            padding: 2.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 100%;
+            max-width: 320px;
+            border: 1px solid #334155;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            color: #e2e8f0;
+        }
+
+        p.status {
+            color: #94a3b8;
+            font-size: 0.875rem;
+            margin-bottom: 2rem;
+            min-height: 1.25rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        button {
+            border: none;
+            border-radius: 9999px;
+            padding: 0.75rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-call {
+            background-color: #10b981;
+            color: white;
+        }
+
+        .btn-call:hover:not(:disabled) {
+            background-color: #059669;
+            transform: scale(1.05);
+        }
+
+        .btn-hangup {
+            background-color: #ef4444;
+            color: white;
+        }
+
+        .btn-hangup:hover:not(:disabled) {
+            background-color: #dc2626;
+            transform: scale(1.05);
+        }
+
+        /* Pulse animation for active call */
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .active-call .btn-hangup {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="phone-card" id="phoneCard">
+        <h1>VoiceKit Softphone</h1>
+        <p class="status" id="statusText">Initializing...</p>
+
+        <div class="btn-group">
+            <button class="btn-call" id="btnCall" disabled>Call</button>
+            <button class="btn-hangup" id="btnHangup" style="display: none;">Hang Up</button>
+        </div>
+    </div>
+
+    <script>
+        const statusText = document.getElementById('statusText');
+        const btnCall = document.getElementById('btnCall');
+        const btnHangup = document.getElementById('btnHangup');
+        const phoneCard = document.getElementById('phoneCard');
+
+        let device;
+        let currentConnection;
+
+        async function initialize() {
+            try {
+                // Fetch the access token from the softphone server
+                const response = await fetch('/token');
+                const data = await response.json();
+                
+                // Initialize the Twilio Device
+                device = new Twilio.Device(data.token, {
+                    codecPreferences: ['opus', 'pcmu'],
+                    fakeLocalDTMF: true,
+                    enableRingingState: true
+                });
+
+                device.on('registered', () => {
+                    statusText.textContent = 'Ready to call';
+                    btnCall.disabled = false;
+                });
+
+                device.on('error', (error) => {
+                    console.error('Twilio.Device Error: ', error.message);
+                    statusText.textContent = 'Error: ' + error.message;
+                });
+
+                device.on('connect', (conn) => {
+                    statusText.textContent = 'Call connected';
+                    currentConnection = conn;
+                    
+                    btnCall.style.display = 'none';
+                    btnHangup.style.display = 'inline-block';
+                    phoneCard.classList.add('active-call');
+                });
+
+                device.on('disconnect', (conn) => {
+                    statusText.textContent = 'Call ended';
+                    currentConnection = null;
+                    
+                    btnHangup.style.display = 'none';
+                    btnCall.style.display = 'inline-block';
+                    phoneCard.classList.remove('active-call');
+                    
+                    setTimeout(() => {
+                        if (device.state === 'registered') {
+                            statusText.textContent = 'Ready to call';
+                        }
+                    }, 2000);
+                });
+
+                // Register to Twilio to ensure the token is validated
+                device.register();
+
+            } catch (error) {
+                console.error("Initialization error:", error);
+                statusText.textContent = 'Failed to fetch token';
+            }
+        }
+
+        btnCall.addEventListener('click', () => {
+            if (device) {
+                statusText.textContent = 'Calling...';
+                // Dial out. It will hit our TwiML app which triggers /client-voice
+                device.connect();
+            }
+        });
+
+        btnHangup.addEventListener('click', () => {
+            if (device) {
+                device.disconnectAll();
+            }
+        });
+
+        // Start initialization on page load
+        initialize();
+    </script>
+</body>
+</html>

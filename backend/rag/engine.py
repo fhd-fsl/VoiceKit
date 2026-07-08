@@ -14,7 +14,7 @@ import numpy as np
 from openai import AsyncOpenAI
 
 from langchain_community.document_loaders import DirectoryLoader
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredHTMLLoader, TextLoader, CSVLoader, UnstructuredExcelLoader, UnstructuredMarkdownLoader
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredHTMLLoader, TextLoader, CSVLoader, UnstructuredExcelLoader, UnstructuredMarkdownLoader, UnstructuredPowerPointLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from flashrank import Ranker, RerankRequest
 
@@ -62,6 +62,7 @@ class RAGEngine:
             ".csv": (CSVLoader, {}),
             ".xlsx": (UnstructuredExcelLoader, {}),
             ".md": (UnstructuredMarkdownLoader, {}),
+            ".pptx": (UnstructuredPowerPointLoader, {}),
         }
 
         index_path = path / ".faiss_index"

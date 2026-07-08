@@ -103,6 +103,7 @@ class GroqLLM:
                         fn_name = tool_call_accumulators[tc.index]["function"]["name"]
                         if fn_name == "search_knowledgebase" and not filler_injected:
                             yield random.choice(FILLER_PHRASES)
+                            yield "<FLUSH>"
                             filler_injected = True
                     continue
                 

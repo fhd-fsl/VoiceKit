@@ -151,7 +151,10 @@ class ElevenLabsTTS:
 
         try:
             async for token in text_stream:
-                if token:
+                if token == "<FLUSH>":
+                    await ws.send(json.dumps({"text": "", "flush": True}))
+                    logger.debug("TTS: sent flush command to trigger immediate audio generation")
+                elif token:
                     await self._send_chunk(ws, token)
 
             # Signal end of text input

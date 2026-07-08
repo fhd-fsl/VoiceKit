@@ -16,6 +16,7 @@ from openai import AsyncOpenAI
 from langchain_community.document_loaders import DirectoryLoader
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredHTMLLoader, TextLoader, CSVLoader, UnstructuredExcelLoader, UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from flashrank import Ranker, RerankRequest
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,10 @@ class RAGEngine:
             logger.warning("No OPENAI_API_KEY provided for RAGEngine")
             
         self._client = AsyncOpenAI(api_key=self._api_key)
-        self._chunks: List[str] = []
+        self._chunks: List[dict] = []
         self._index: faiss.IndexFlatL2 | None = None
         self._is_ready = False
+        self._ranker = Ranker(model_name="ms-marco-TinyBERT-L-2-v2")
 
     async def initialize(
         self, 
@@ -124,7 +126,10 @@ class RAGEngine:
         )
         
         chunks = text_splitter.split_documents(all_documents)
-        self._chunks = [chunk.page_content for chunk in chunks if chunk.page_content.strip()]
+        self._chunks = [
+            {"text": chunk.page_content, "metadata": chunk.metadata}
+            for chunk in chunks if chunk.page_content.strip()
+        ]
         
         if not self._chunks:
             logger.warning("No text extracted after chunking.")
@@ -136,7 +141,7 @@ class RAGEngine:
         try:
             response = await self._client.embeddings.create(
                 model="text-embedding-3-small",
-                input=self._chunks,
+                input=[c["text"] for c in self._chunks],
             )
             embeddings = [data.embedding for data in response.data]
             
@@ -163,8 +168,8 @@ class RAGEngine:
         except Exception:
             logger.exception("Failed to embed or build FAISS index")
 
-    async def retrieve(self, query: str, top_k: int = 3) -> List[str]:
-        """Retrieve the top-k most relevant chunks for a query."""
+    async def retrieve(self, query: str, top_k: int = 5) -> List[str]:
+        """Retrieve the top-k most relevant chunks for a query using FAISS + FlashRank."""
         if not self._is_ready or not self._index:
             return []
 
@@ -180,13 +185,39 @@ class RAGEngine:
             query_embedding = response.data[0].embedding
             query_vector = np.array([query_embedding]).astype("float32")
             
-            # Search the index
-            D, I = self._index.search(query_vector, k=min(top_k, len(self._chunks)))
+            # Step 1: Initial Retrieval (pull more chunks than needed)
+            fetch_k = max(15, top_k * 2)
+            D, I = self._index.search(query_vector, k=min(fetch_k, len(self._chunks)))
             
-            results = []
-            for idx in I[0]:
+            passages = []
+            for i, idx in enumerate(I[0]):
                 if 0 <= idx < len(self._chunks):
-                    results.append(self._chunks[idx])
+                    chunk_dict = self._chunks[idx]
+                    passages.append({
+                        "id": i, 
+                        "text": chunk_dict["text"], 
+                        "meta": chunk_dict["metadata"]
+                    })
+            
+            if not passages:
+                return []
+                
+            # Step 2: Rerank using FlashRank
+            req = RerankRequest(query=query, passages=passages)
+            reranked_results = self._ranker.rerank(req)
+            
+            # Return the text of the top_k reranked results with metadata
+            results = []
+            for res in reranked_results[:top_k]:
+                meta = res.get("meta", {})
+                source = meta.get("source", "Unknown Source")
+                source_basename = os.path.basename(source)
+                
+                page = meta.get("page")
+                page_str = f", Page: {page}" if page is not None else ""
+                
+                formatted_text = f"[Source: {source_basename}{page_str}]\n{res['text']}"
+                results.append(formatted_text)
             
             return results
             

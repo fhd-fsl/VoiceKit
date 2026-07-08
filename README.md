@@ -98,7 +98,7 @@ Then call your Twilio phone number and talk to the AI!
 
 VoiceKit completely decouples the underlying framework from your specific business logic.
 
-1. **Knowledge Base (RAG)**: Drop your `.pdf`, `.docx`, `.xlsx`, `.csv`, `.md`, `.html`, or `.txt` files directly into `business/knowledge_base/`. The built-in RAG engine uses LangChain and FAISS to automatically parse, chunk, and vectorize them on startup.
+1. **Knowledge Base (RAG)**: Drop your `.pdf`, `.docx`, `.xlsx`, `.csv`, `.md`, `.html`, or `.txt` files directly into `business/knowledge_base/`. The built-in RAG engine uses LangChain, FAISS, and **FlashRank** to automatically parse, chunk, vectorize, and rerank them for maximum retrieval accuracy.
 2. **Agent Persona**: Edit `business/prompt.txt` to give your agent a name, background, and specific behavioral instructions.
 3. **Custom Tools**: Add Python functions to `business/tools/` and register them so the LLM can trigger real-world actions (e.g., booking appointments, fetching estimates).
 

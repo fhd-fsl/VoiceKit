@@ -20,8 +20,7 @@ FILLER_PHRASES = [
     "Let me look that up for you... ",
     "Give me just one moment... ",
     "Let's see here... ",
-    "Uh...",
-    "Hmm...",
     "Let me see... ",
-    "One moment please... "
+    "One moment please... ",
+    "Let me check..."
 ]

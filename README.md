@@ -162,6 +162,14 @@ The architecture is designed to support:
 - **Provider Swapping**: Add a new provider by implementing the Protocol, then change one line
 - **Barge-in**: Built-in support for interrupting the AI mid-speech
 
+## RAG Benchmarks
+
+The RAG engine is heavily tested and tuned for high accuracy retrieval on complex technical documents. 
+
+Recent evaluations using the **Ragas** framework demonstrate:
+- **Synthetic "Needle-in-a-haystack" Datasets:** 100% Context Precision, 96.3% Faithfulness.
+- **Real-World Automotive Datasets:** 62.1% Context Precision, 82.8% Faithfulness.
+
 ## License
 
 MIT

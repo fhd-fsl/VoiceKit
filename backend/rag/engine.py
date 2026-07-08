@@ -3,6 +3,7 @@ Lightweight in-memory RAG engine using FAISS and OpenAI embeddings.
 LangChain for multi-document parsing and chunking.
 """
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -61,6 +62,37 @@ class RAGEngine:
             ".md": (UnstructuredMarkdownLoader, {}),
         }
 
+        index_path = path / ".faiss_index"
+        chunks_path = path / ".chunks.json"
+
+        # Check if we can use the cached index
+        needs_rebuild = True
+        if index_path.exists() and chunks_path.exists():
+            latest_doc_mtime = 0.0
+            for ext in loaders.keys():
+                for file in path.rglob(f"*{ext}"):
+                    mtime = file.stat().st_mtime
+                    if mtime > latest_doc_mtime:
+                        latest_doc_mtime = mtime
+            
+            if latest_doc_mtime > 0.0:
+                index_mtime = index_path.stat().st_mtime
+                if index_mtime >= latest_doc_mtime:
+                    needs_rebuild = False
+
+        if not needs_rebuild:
+            logger.info("Loading cached RAG index from disk...")
+            try:
+                self._index = faiss.read_index(str(index_path))
+                with open(chunks_path, "r", encoding="utf-8") as f:
+                    self._chunks = json.load(f)
+                self._is_ready = True
+                logger.info("Loaded %d chunks from cache.", len(self._chunks))
+                return
+            except Exception as e:
+                logger.warning("Failed to load cache: %s. Rebuilding...", e)
+                needs_rebuild = True
+
         all_documents = []
         
         logger.info("Scanning directory: %s", path)
@@ -116,6 +148,15 @@ class RAGEngine:
             self._index = faiss.IndexFlatL2(dimension)
             self._index.add(vectors)
             
+            # Save to disk
+            try:
+                faiss.write_index(self._index, str(index_path))
+                with open(chunks_path, "w", encoding="utf-8") as f:
+                    json.dump(self._chunks, f)
+                logger.info("Saved RAG index and chunks to disk.")
+            except Exception as e:
+                logger.warning("Failed to cache RAG index to disk: %s", e)
+
             self._is_ready = True
             logger.info("RAG Engine successfully initialized with FAISS index.")
             

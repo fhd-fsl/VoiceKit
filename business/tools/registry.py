@@ -1,17 +1,17 @@
 """
-Business tool registry.
+Business tool registry for Aventro Motors.
 
-Contains tools specific to the business logic (e.g. checking appointments).
+Contains tools specific to the business logic (e.g. checking vehicle service status).
 """
 
-from business.tools.services import check_appointment, get_estimate
+from business.tools.services import check_service_status, get_service_estimate
 
 BUSINESS_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "check_appointment",
-            "description": "Checks the date and time of a customer's upcoming service appointment. IMPORTANT: NEVER call this tool with a placeholder or fake phone number. If the user hasn't explicitly told you their phone number, you MUST ask them for it before calling this tool.",
+            "name": "check_service_status",
+            "description": "Checks the repair or maintenance status of a customer's vehicle in the shop. IMPORTANT: NEVER call this tool with a placeholder or fake phone number. If the user hasn't explicitly told you their phone number, you MUST ask them for it before calling this tool.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -27,27 +27,27 @@ BUSINESS_TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "get_estimate",
-            "description": "Provides a rough cost estimate for cleaning services based on the home's square footage. IMPORTANT: NEVER call this tool with a guessed or placeholder square footage (like 2000). You MUST explicitly ask the user for their exact square footage before calling this tool.",
+            "name": "get_service_estimate",
+            "description": "Provides a rough cost estimate for common automotive services. IMPORTANT: NEVER call this tool with a guessed or placeholder vehicle model or service type. You MUST explicitly ask the user for their exact vehicle model and the service they need before calling this tool.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "service_type": {
                         "type": "string",
-                        "description": "The type of cleaning service requested: 'Standard', 'Deep', or 'Move-In/Move-Out'."
+                        "description": "The type of service requested: 'Oil Change', 'Brake Pad Replacement', or 'Transmission Flush'."
                     },
-                    "square_footage": {
-                        "type": "integer",
-                        "description": "The total square footage of the home."
+                    "vehicle_model": {
+                        "type": "string",
+                        "description": "The model of the Aventro vehicle (e.g., 'Aventro Edge', 'Aventro Summit')."
                     }
                 },
-                "required": ["service_type", "square_footage"]
+                "required": ["service_type", "vehicle_model"]
             }
         }
     }
 ]
 
 BUSINESS_TOOL_FUNCTIONS = {
-    "check_appointment": check_appointment,
-    "get_estimate": get_estimate
+    "check_service_status": check_service_status,
+    "get_service_estimate": get_service_estimate
 }

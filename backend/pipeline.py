@@ -21,7 +21,8 @@ from backend.llm.base import LLMProvider, PipelineContext
 from backend.tts.base import TTSProvider
 from backend.rag.engine import RAGEngine
 from backend.utils.audio import chunk_audio
-from backend.tools.registry import TOOLS_SCHEMA, TOOL_FUNCTIONS
+from backend.tools.registry import FRAMEWORK_TOOLS_SCHEMA
+from business.tools.registry import BUSINESS_TOOLS_SCHEMA, BUSINESS_TOOL_FUNCTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -248,16 +249,8 @@ class VoicePipeline:
         # Add user message to conversation history
         self._messages.append({"role": "user", "content": user_text})
 
-        # Retrieve RAG context
-        rag_results = await self._rag.retrieve(user_text)
-        
-        if rag_results:
-            logger.info("RAG: Retrieved %d relevant chunks", len(rag_results))
-            for i, chunk in enumerate(rag_results):
-                logger.debug("RAG Chunk %d: %s", i + 1, chunk)
-
-        # Build pipeline context
-        context = PipelineContext(rag_results=rag_results if rag_results else None)
+        # Build pipeline context (RAG is now handled via tool calling)
+        context = PipelineContext(rag_results=None)
 
         full_response = ""
 
@@ -265,11 +258,18 @@ class VoicePipeline:
             # Create an async generator that captures the full response
             async def llm_token_stream() -> AsyncIterator[str]:
                 nonlocal full_response
+                
+                # Dynamically inject the RAG engine as a callable tool
+                dynamic_tools = dict(BUSINESS_TOOL_FUNCTIONS)
+                dynamic_tools["search_knowledgebase"] = self._rag.retrieve
+
+                all_schemas = FRAMEWORK_TOOLS_SCHEMA + BUSINESS_TOOLS_SCHEMA
+
                 async for token in self._llm.generate(
                     self._messages, 
                     context,
-                    tools=TOOLS_SCHEMA,
-                    tool_functions=TOOL_FUNCTIONS
+                    tools=all_schemas,
+                    tool_functions=dynamic_tools
                 ):
                     full_response += token
                     yield token

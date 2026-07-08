@@ -7,12 +7,14 @@ at extremely low latency.
 
 import json
 import logging
+import random
 from typing import Any, AsyncIterator
 
+import openai
 from openai import AsyncOpenAI
 
 from backend.llm.base import PipelineContext
-from backend.prompts import DEFAULT_SYSTEM_PROMPT
+from backend.prompts import DEFAULT_SYSTEM_PROMPT, FILLER_PHRASES
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,8 @@ class GroqLLM:
     ) -> None:
         self._client = AsyncOpenAI(
             base_url="https://api.groq.com/openai/v1", 
-            api_key=api_key
+            api_key=api_key,
+            max_retries=0
         )
         self._model = model
         self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
@@ -46,6 +49,7 @@ class GroqLLM:
         context: PipelineContext | None = None,
         tools: list[dict[str, Any]] | None = None,
         tool_functions: dict[str, Any] | None = None,
+        _filler_injected: bool = False,
     ) -> AsyncIterator[str]:
         """Stream text tokens for the given conversation."""
         full_messages = self._build_messages(messages, context)
@@ -72,6 +76,7 @@ class GroqLLM:
 
             # Accumulate tool calls across chunks
             tool_call_accumulators = {}
+            filler_injected = _filler_injected
 
             async for chunk in stream:
                 delta = chunk.choices[0].delta
@@ -93,6 +98,12 @@ class GroqLLM:
                                 tool_call_accumulators[tc.index]["function"]["name"] += tc.function.name
                             if tc.function.arguments:
                                 tool_call_accumulators[tc.index]["function"]["arguments"] += tc.function.arguments
+
+                        # Inject filler word if we detect the RAG tool
+                        fn_name = tool_call_accumulators[tc.index]["function"]["name"]
+                        if fn_name == "search_knowledgebase" and not filler_injected:
+                            yield random.choice(FILLER_PHRASES)
+                            filler_injected = True
                     continue
                 
                 # Otherwise, yield text token
@@ -141,9 +152,12 @@ class GroqLLM:
                     })
                     
                 # Recurse to get the final response!
-                async for token in self.generate(messages, context, tools, tool_functions):
+                async for token in self.generate(messages, context, tools, tool_functions, _filler_injected=filler_injected):
                     yield token
 
+        except openai.RateLimitError as e:
+            logger.warning("Groq API Rate Limited (429). Exception: %s", e)
+            yield "I'm sorry, my brain is a bit overloaded right now. Could you please hold on a second and try again?"
         except Exception as e:
             logger.exception("Error during Groq streaming: %s", e)
             yield "I'm sorry, I'm having trouble connecting to my brain right now."

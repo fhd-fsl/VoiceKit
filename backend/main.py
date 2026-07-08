@@ -51,9 +51,10 @@ rag_engine = RAGEngine(api_key=OPENAI_API_KEY)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize RAG on startup
-    faq_path = os.path.join(os.path.dirname(__file__), "rag", "faq.txt")
-    await rag_engine.initialize(faq_path)
+    # Initialize RAG on startup (from the business knowledge_base folder)
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    kb_path = os.path.join(base_dir, "business", "knowledge_base")
+    await rag_engine.initialize(kb_path, chunk_size=1000, chunk_overlap=200)
     yield
 
 # ── FastAPI application ──────────────────────────────────────────────
@@ -105,8 +106,19 @@ async def media_stream(websocket: WebSocket):
     """
     # Create providers for this call session
     telephony = TelephonyProvider.from_twilio()
+    # Load business prompt
+    prompt_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "business", "prompt.txt")
+    try:
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            business_prompt = f.read().strip()
+    except Exception:
+        business_prompt = ""
+
+    from backend.prompts import DEFAULT_SYSTEM_PROMPT
+    combined_prompt = f"{business_prompt}\n\n{DEFAULT_SYSTEM_PROMPT}" if business_prompt else DEFAULT_SYSTEM_PROMPT
+
     stt = STTProvider.from_deepgram(api_key=DEEPGRAM_API_KEY)
-    llm = LLMProvider.from_groq(api_key=GROQ_API_KEY)
+    llm = LLMProvider.from_openai(api_key=OPENAI_API_KEY, system_prompt=combined_prompt)
     tts = TTSProvider.from_elevenlabs(
         api_key=ELEVENLABS_API_KEY,
         voice_id=ELEVENLABS_VOICE_ID,

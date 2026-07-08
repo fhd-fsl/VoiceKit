@@ -1,5 +1,6 @@
 """
 Lightweight in-memory RAG engine using FAISS and OpenAI embeddings.
+LangChain for multi-document parsing and chunking.
 """
 
 import logging
@@ -11,12 +12,17 @@ import faiss
 import numpy as np
 from openai import AsyncOpenAI
 
+from langchain_community.document_loaders import DirectoryLoader
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredHTMLLoader, TextLoader, CSVLoader, UnstructuredExcelLoader, UnstructuredMarkdownLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 logger = logging.getLogger(__name__)
 
 
 class RAGEngine:
-    """A lightweight RAG engine that chunks a text document, embeds it
-    using OpenAI, and retrieves relevant chunks via FAISS.
+    """A RAG engine that uses LangChain to load all documents in a directory,
+    chunks them using an overlapping strategy, embeds using OpenAI,
+    and retrieves relevant chunks via FAISS.
     """
 
     def __init__(self, api_key: str | None = None) -> None:
@@ -29,30 +35,71 @@ class RAGEngine:
         self._index: faiss.IndexFlatL2 | None = None
         self._is_ready = False
 
-    async def initialize(self, document_path: str | Path) -> None:
-        """Load document, chunk it, embed it, and build FAISS index."""
+    async def initialize(
+        self, 
+        docs_dir: str | Path, 
+        chunk_size: int = 1000, 
+        chunk_overlap: int = 200
+    ) -> None:
+        """Scan directory, parse all supported docs, chunk, and index."""
         if not self._api_key:
             return
 
-        path = Path(document_path)
-        if not path.exists():
-            logger.error("RAG document not found: %s", document_path)
+        path = Path(docs_dir)
+        if not path.exists() or not path.is_dir():
+            logger.error("RAG knowledge base directory not found: %s", docs_dir)
             return
 
-        text = path.read_text(encoding="utf-8")
+        # Setup LangChain loaders for different file types
+        loaders = {
+            ".txt": (TextLoader, {}),
+            ".pdf": (PyPDFLoader, {}),
+            ".docx": (Docx2txtLoader, {}),
+            ".html": (UnstructuredHTMLLoader, {}),
+            ".csv": (CSVLoader, {}),
+            ".xlsx": (UnstructuredExcelLoader, {}),
+            ".md": (UnstructuredMarkdownLoader, {}),
+        }
+
+        all_documents = []
         
-        # Simple chunking: split by double newlines (paragraphs)
-        self._chunks = [
-            chunk.strip() 
-            for chunk in text.split("\n\n") 
-            if chunk.strip()
-        ]
+        logger.info("Scanning directory: %s", path)
+        
+        # Load documents based on extension
+        for ext, (loader_cls, kwargs) in loaders.items():
+            loader = DirectoryLoader(
+                str(path), 
+                glob=f"**/*{ext}", 
+                loader_cls=loader_cls,
+                loader_kwargs=kwargs
+            )
+            try:
+                docs = loader.load()
+                all_documents.extend(docs)
+                logger.info("Loaded %d %s files.", len(docs), ext)
+            except Exception as e:
+                logger.warning("Error loading %s files: %s", ext, e)
+
+        if not all_documents:
+            logger.warning("No parseable documents found in %s", path)
+            return
+
+        # Chunk the documents with overlap
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n\n", "\n", " ", ""]
+        )
+        
+        chunks = text_splitter.split_documents(all_documents)
+        self._chunks = [chunk.page_content for chunk in chunks if chunk.page_content.strip()]
         
         if not self._chunks:
-            logger.warning("No chunks found in document: %s", document_path)
+            logger.warning("No text extracted after chunking.")
             return
 
-        logger.info("Generating embeddings for %d chunks...", len(self._chunks))
+        logger.info("Generated %d overlapping chunks (size=%d, overlap=%d). Embedding...", 
+                    len(self._chunks), chunk_size, chunk_overlap)
         
         try:
             response = await self._client.embeddings.create(
@@ -70,12 +117,12 @@ class RAGEngine:
             self._index.add(vectors)
             
             self._is_ready = True
-            logger.info("RAG Engine initialized successfully.")
+            logger.info("RAG Engine successfully initialized with FAISS index.")
             
         except Exception:
-            logger.exception("Failed to initialize RAG Engine")
+            logger.exception("Failed to embed or build FAISS index")
 
-    async def retrieve(self, query: str, top_k: int = 2) -> List[str]:
+    async def retrieve(self, query: str, top_k: int = 3) -> List[str]:
         """Retrieve the top-k most relevant chunks for a query."""
         if not self._is_ready or not self._index:
             return []
@@ -93,7 +140,6 @@ class RAGEngine:
             query_vector = np.array([query_embedding]).astype("float32")
             
             # Search the index
-            # D = distances, I = indices of nearest neighbors
             D, I = self._index.search(query_vector, k=min(top_k, len(self._chunks)))
             
             results = []

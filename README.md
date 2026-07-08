@@ -28,8 +28,8 @@ Each pipeline layer uses a **Protocol-based abstraction**, making providers swap
 | Layer | Current Provider | Interface |
 |---|---|---|
 | Telephony | Twilio Media Streams | `TelephonyProvider` |
-| STT | ElevenLabs Scribe v2 (or Deepgram Nova-3) | `STTProvider` |
-| LLM | OpenAI (GPT-4o-mini, streaming) | `LLMProvider` |
+| STT | Deepgram Nova-3 | `STTProvider` |
+| LLM | OpenAI (GPT-4o-mini) or Groq (Llama-3.1) | `LLMProvider` |
 | TTS | ElevenLabs (Flash v2.5, streaming) | `TTSProvider` |
 
 Swap a provider by changing a single line:
@@ -44,7 +44,8 @@ stt = STTProvider.from_elevenlabs(api_key=...)   # current
 - **ngrok** — to expose your local server to Twilio ([download](https://ngrok.com/download))
 - **Twilio account** — with a phone number that supports Voice
 - **Deepgram API key** — for speech-to-text ([sign up](https://console.deepgram.com))
-- **OpenAI API key** — for the LLM ([sign up](https://platform.openai.com))
+- **OpenAI API key** — for the LLM and RAG Embeddings ([sign up](https://platform.openai.com))
+- **Groq API key** *(Optional)* — if using the Groq LLM provider
 - **ElevenLabs API key** — for text-to-speech ([sign up](https://elevenlabs.io))
 
 ## Setup
@@ -93,6 +94,14 @@ This single command will:
 
 Then call your Twilio phone number and talk to the AI!
 
+## Customizing the Agent
+
+VoiceKit completely decouples the underlying framework from your specific business logic.
+
+1. **Knowledge Base (RAG)**: Drop your `.pdf`, `.docx`, `.xlsx`, `.csv`, `.md`, `.html`, or `.txt` files directly into `business/knowledge_base/`. The built-in RAG engine uses LangChain and FAISS to automatically parse, chunk, and vectorize them on startup.
+2. **Agent Persona**: Edit `business/prompt.txt` to give your agent a name, background, and specific behavioral instructions.
+3. **Custom Tools**: Add Python functions to `business/tools/` and register them so the LLM can trigger real-world actions (e.g., booking appointments, fetching estimates).
+
 ## Project Structure
 
 ```
@@ -112,8 +121,14 @@ VoiceKit/
 │   ├── tts/
 │   │   ├── base.py                  # TTSProvider Protocol
 │   │   └── elevenlabs_provider.py   # ElevenLabs streaming TTS
+│   ├── rag/
+│   │   └── engine.py                # Multi-format LangChain/FAISS RAG Engine
 │   └── utils/
 │       └── audio.py                 # Audio format conversion (mu-law <-> PCM)
+├── business/                        # Business logic (Decoupled from Framework)
+│   ├── knowledge_base/              # Drop PDFs, Word Docs, Excels, HTML here
+│   ├── tools/                       # Business-specific Python tools
+│   └── prompt.txt                   # The agent's persona and instructions
 ├── testing/
 │   └── softphone/                   # Browser-based softphone for testing
 ├── run.py                           # One-command launcher (ngrok + webhook + server)

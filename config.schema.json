@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VoiceKit Configuration Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "telephony": {
+      "type": "object",
+      "description": "Configuration for the telephony provider (e.g., twilio, local).",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["twilio", "local"],
+          "description": "The telephony provider to use."
+        },
+        "twilio": {
+          "type": "object",
+          "description": "Settings for the Twilio telephony provider.",
+          "additionalProperties": false,
+          "properties": {
+            "phone_number": { "type": "string", "description": "The Twilio phone number." },
+            "port": { "type": "integer", "default": 8000, "description": "The local port to expose via ngrok." }
+          }
+        }
+      },
+      "required": ["provider"]
+    },
+    "stt": {
+      "type": "object",
+      "description": "Configuration for the Speech-to-Text (STT) provider.",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["deepgram"],
+          "description": "The Speech-to-Text provider."
+        },
+        "deepgram": {
+          "type": "object",
+          "description": "Settings for the Deepgram STT provider.",
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "enum": ["nova-3", "nova-2", "whisper-large-v3"], "description": "The Deepgram model name." },
+            "language": { "type": "string", "enum": ["en-US", "en-GB", "en-AU", "es", "fr", "de"], "description": "The transcription language." }
+          }
+        }
+      },
+      "required": ["provider"]
+    },
+    "llm": {
+      "type": "object",
+      "description": "Configuration for the Large Language Model (LLM) provider.",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["openai", "groq"],
+          "description": "The Large Language Model provider."
+        },
+        "openai": {
+          "type": "object",
+          "description": "Settings for OpenAI.",
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "enum": ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"], "description": "The OpenAI model to use." },
+            "temperature": { "type": "number", "minimum": 0, "maximum": 2, "description": "Model temperature (randomness)." }
+          }
+        },
+        "groq": {
+          "type": "object",
+          "description": "Settings for Groq.",
+          "additionalProperties": false,
+          "properties": {
+            "model": { "type": "string", "enum": ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"], "description": "The Groq model to use." },
+            "temperature": { "type": "number", "minimum": 0, "maximum": 2, "description": "Model temperature (randomness)." }
+          }
+        }
+      },
+      "required": ["provider"]
+    },
+    "tts": {
+      "type": "object",
+      "description": "Configuration for the Text-to-Speech (TTS) provider.",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["elevenlabs"],
+          "description": "The Text-to-Speech provider."
+        },
+        "elevenlabs": {
+          "type": "object",
+          "description": "Settings for ElevenLabs.",
+          "additionalProperties": false,
+          "properties": {
+            "voice_id": { "type": "string", "description": "The ElevenLabs voice ID to use." }
+          }
+        }
+      },
+      "required": ["provider"]
+    },
+    "agent": {
+      "type": "object",
+      "description": "Agent configuration such as tools and system prompt.",
+      "additionalProperties": false,
+      "properties": {
+        "prompt": { "type": "string", "description": "The system prompt for the voice agent." },
+        "tools_module": { "type": "string", "description": "Python module path containing BUSINESS_TOOLS_SCHEMA." }
+      }
+    },
+    "rag": {
+      "type": "object",
+      "description": "Configuration for the RAG (Retrieval-Augmented Generation) engine.",
+      "additionalProperties": false,
+      "properties": {
+        "knowledge_base_dir": { "type": "string", "description": "Directory containing documents for the knowledge base." },
+        "chunk_size": { "type": "integer", "description": "Maximum characters per chunk." },
+        "chunk_overlap": { "type": "integer", "description": "Character overlap between consecutive chunks." },
+        "top_k": { "type": "integer", "description": "Number of top documents to retrieve during RAG." }
+      }
+    }
+  }
+}

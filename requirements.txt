@@ -18,3 +18,4 @@ markdown
 msoffcrypto-tool
 pandas
 python-pptx
+pyyaml

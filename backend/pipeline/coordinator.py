@@ -22,7 +22,8 @@ from backend.tts.base import TTSProvider
 from backend.rag.engine import RAGEngine
 from backend.utils.audio import chunk_audio
 from backend.tools.registry import FRAMEWORK_TOOLS_SCHEMA
-from business.tools.registry import BUSINESS_TOOLS_SCHEMA, BUSINESS_TOOL_FUNCTIONS
+from backend.utils.config import load_config
+import importlib
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +247,13 @@ class VoicePipeline:
         """
         logger.info("User said: %s", user_text)
 
+        # Self-healing: if the user barged-in during a tool execution, the last message
+        # might be an orphaned `tool_calls` request with no corresponding `tool` response.
+        # OpenAI strictly rejects this, so we must clean it up before proceeding.
+        while self._messages and self._messages[-1].get("role") == "assistant" and "tool_calls" in self._messages[-1]:
+            logger.warning("Cleaning up orphaned tool_calls message due to previous barge-in.")
+            self._messages.pop()
+
         # Add user message to conversation history
         self._messages.append({"role": "user", "content": user_text})
 
@@ -259,11 +267,22 @@ class VoicePipeline:
             async def llm_token_stream() -> AsyncIterator[str]:
                 nonlocal full_response
                 
+                # Dynamically load tools using importlib based on config
+                config = load_config()
+                try:
+                    tools_module = importlib.import_module(config.agent.tools_module)
+                    business_tools_schema = getattr(tools_module, "BUSINESS_TOOLS_SCHEMA", [])
+                    business_tool_functions = getattr(tools_module, "BUSINESS_TOOL_FUNCTIONS", {})
+                except Exception as e:
+                    logger.error("Failed to load tools module: %s", e)
+                    business_tools_schema = []
+                    business_tool_functions = {}
+
                 # Dynamically inject the RAG engine as a callable tool
-                dynamic_tools = dict(BUSINESS_TOOL_FUNCTIONS)
+                dynamic_tools = dict(business_tool_functions)
                 dynamic_tools["search_knowledgebase"] = self._rag.retrieve
 
-                all_schemas = FRAMEWORK_TOOLS_SCHEMA + BUSINESS_TOOLS_SCHEMA
+                all_schemas = FRAMEWORK_TOOLS_SCHEMA + business_tools_schema
 
                 async for token in self._llm.generate(
                     self._messages, 
@@ -271,7 +290,8 @@ class VoicePipeline:
                     tools=all_schemas,
                     tool_functions=dynamic_tools
                 ):
-                    full_response += token
+                    if token != "<FLUSH>":
+                        full_response += token
                     yield token
 
             # Pipe LLM tokens through TTS and into the playback queue

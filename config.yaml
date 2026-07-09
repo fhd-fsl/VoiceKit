@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=./config.schema.json
+
+agent:
+  prompt: |
+    Your name is Ben.
+    You are a helpful voice assistant for Aventro Motors, an automotive company that sells vehicles, provides service and maintenance, and answers customer queries about our cars.
+    Keep your responses concise and conversational, as they will be spoken aloud. They must be to the point.
+    Use natural, short, flowing sentences.
+    You help customers check their vehicle's service status, get price estimates for repairs or new vehicles, and answer questions about Aventro Motors.
+    You have access to a knowledge base of information about Aventro Motors, and you use it to answer questions you don't know about. You do not guess or make things up.
+  tools_module: "business.tools.registry"
+
+telephony:
+  provider: "local"
+  twilio:
+    phone_number: "+13252405168"
+    port: 8000
+
+stt:
+  provider: "deepgram"
+  deepgram:
+    model: "nova-3"
+    language: "en-US"
+
+llm:
+  provider: "openai"
+  openai:
+    model: "gpt-4o-mini"
+    temperature: 0.2
+  groq:
+    model: "llama-3.1-8b-instant"
+    temperature: 0.2
+
+tts:
+  provider: "elevenlabs"
+  elevenlabs:
+    voice_id: "JBFqnCBsd6RMkjVDRZzb"
+
+rag:
+  knowledge_base_dir: "business/knowledge_base"
+  chunk_size: 1000
+  chunk_overlap: 200
+  top_k: 5

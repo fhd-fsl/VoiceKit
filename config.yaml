@@ -40,4 +40,4 @@ rag:
   knowledge_base_dir: "business/knowledge_base"
   chunk_size: 1000
   chunk_overlap: 200
-  top_k: 5
+  top_k: 3

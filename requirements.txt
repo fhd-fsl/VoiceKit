@@ -19,3 +19,6 @@ msoffcrypto-tool
 pandas
 python-pptx
 pyyaml
+httpx
+flashrank
+pyaudio
